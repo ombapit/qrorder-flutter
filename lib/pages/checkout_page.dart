@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_pos/pages/payment_method.dart';
+import 'package:flutter_pos/providers/appid_provider.dart';
+import 'package:flutter_pos/services/transaction_service.dart';
+import 'package:flutter_pos/utils/currency.dart';
 import 'package:provider/provider.dart';
 import '../providers/order_provider.dart';
 
@@ -8,7 +11,19 @@ class CheckoutPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appid = Provider.of<AppIdProvider>(context);
     final order = Provider.of<OrderProvider>(context);
+
+    final nameController = TextEditingController(text: order.buyerName);
+    final phoneController = TextEditingController(text: order.buyerPhone);
+
+    // biar cursor tetap di akhir teks
+    nameController.selection = TextSelection.fromPosition(
+      TextPosition(offset: nameController.text.length),
+    );
+    phoneController.selection = TextSelection.fromPosition(
+      TextPosition(offset: phoneController.text.length),
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text("Checkout")),
@@ -22,19 +37,22 @@ class CheckoutPage extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             TextField(
+              controller: nameController,
               decoration: const InputDecoration(labelText: "Nama"),
               onChanged: (val) => order.setBuyerInfo(name: val),
             ),
             TextField(
+              controller: phoneController,
               decoration: const InputDecoration(
                 labelText: "No. HP",
                 prefixText: "+62 ", // 👈 prefix otomatis
               ),
               keyboardType: TextInputType.phone,
-              onChanged: (val) {
-                // val hanya berisi angka setelah +62
-                order.setBuyerInfo(phone: "+62$val");
-              },
+              onChanged: (val) => order.setBuyerInfo(phone: val),
+              // onChanged: (val) {
+              //   // val hanya berisi angka setelah +62
+              //   order.setBuyerInfo(phone: "+62$val");
+              // },
             ),
 
             const Divider(),
@@ -47,17 +65,48 @@ class CheckoutPage extends StatelessWidget {
             ...order.cart.values.map(
               (c) => ListTile(
                 title: Text(c.product.name),
-                subtitle: Text(
-                  "Qty: ${c.qty} x Rp ${c.product.price.toStringAsFixed(0)}",
-                ),
-                trailing: Text("Rp ${c.subtotal.toStringAsFixed(0)}"),
+                subtitle: Text("Qty: ${c.qty} x ${formatCurrency(c.subtotal)}"),
+                trailing: Text(formatCurrency(c.subtotal)),
               ),
             ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
               child: Text(
-                "Total: Rp ${order.total_price.toStringAsFixed(0)}",
+                "Total: ${formatCurrency(order.total_price)}",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                "Pb1 10%: ${formatCurrency(order.total_tax.toInt())}",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                "Service: ${formatCurrency(order.total_service.toInt())}",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                "Grand Total: ${formatCurrency(order.trx_nominal.toInt())}",
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -104,17 +153,43 @@ class CheckoutPage extends StatelessWidget {
                         },
                       );
 
-                      // ✅ Jika user pilih "Ya, Lanjut" → pindah ke PaymentPage
+                      // ✅ Jika user pilih "Ya, Lanjut" → ke payment page
                       if (confirm == true) {
-                        // hapus nilai provider
-                        order.clearCart();
+                        // Insert transaction to API
+                        final success =
+                            await TransactionService.insertTransaction(
+                              appid,
+                              order,
+                            );
 
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const PaymentPage(),
-                          ),
-                        );
+                        if (success != null) {
+                          // Clear cart after successful API call
+                          order.clearCart();
+
+                          // Navigate to payment page
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PaymentPage(trxQr: success),
+                            ),
+                            (Route<dynamic> route) => route
+                                .isFirst, // sisain route pertama (HomePage)
+                          );
+
+                          // Close loading dialog
+                          // Navigator.of(context).pop();
+                        } else {
+                          // Show error message
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                "Gagal menyimpan transaksi. Silakan coba lagi.",
+                              ),
+                              backgroundColor: Colors.red,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
                       }
                     },
               icon: const Icon(Icons.check_circle),

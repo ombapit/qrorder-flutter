@@ -23,7 +23,12 @@ class _OrderTemplatePageState extends State<OrderTemplatePage> {
   final ProductService _productService = ProductService();
   final OutletService _outletService = OutletService();
   List<Product> _products = [];
+  List<Product> _filteredProducts = [];
   bool _loading = true;
+
+  bool _isGrid = true;
+  bool _isSearching = false;
+  String _searchQuery = "";
 
   @override
   void initState() {
@@ -38,7 +43,12 @@ class _OrderTemplatePageState extends State<OrderTemplatePage> {
     final order = context.read<OrderProvider>();
     try {
       final outlet = await _outletService.fetchOutlet(id);
-      order.setOutlet(outlet.outletName, outlet.meja);
+      order.setOutlet(
+        outlet.outletName,
+        outlet.meja,
+        outlet.useQris,
+        outlet.merchantKey,
+      );
     } catch (e) {
       // print(e.toString());
     }
@@ -50,6 +60,7 @@ class _OrderTemplatePageState extends State<OrderTemplatePage> {
       // print(products.length);
       setState(() {
         _products = products;
+        _filteredProducts = products;
         _loading = false;
       });
     } catch (e) {
@@ -59,7 +70,18 @@ class _OrderTemplatePageState extends State<OrderTemplatePage> {
     }
   }
 
-  bool _isGrid = true;
+  void _runFilter(String query) {
+    setState(() {
+      _searchQuery = query;
+      if (query.isEmpty) {
+        _filteredProducts = _products;
+      } else {
+        _filteredProducts = _products
+            .where((p) => p.name.toLowerCase().contains(query.toLowerCase()))
+            .toList();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,15 +89,37 @@ class _OrderTemplatePageState extends State<OrderTemplatePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Menu Order',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
+        title: _isSearching
+            ? TextField(
+                autofocus: true,
+                onChanged: _runFilter,
+                decoration: const InputDecoration(
+                  hintText: 'Cari produk...',
+                  border: InputBorder.none,
+                ),
+              )
+            : const Text(
+                'Menu Order',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
         actions: [
           IconButton(
             tooltip: _isGrid ? 'Ubah ke List' : 'Ubah ke Grid',
             onPressed: () => setState(() => _isGrid = !_isGrid),
             icon: Icon(_isGrid ? Icons.view_list : Icons.grid_view),
+          ),
+          IconButton(
+            tooltip: _isSearching ? 'Tutup Pencarian' : 'Cari Produk',
+            onPressed: () {
+              setState(() {
+                _isSearching = !_isSearching;
+                if (!_isSearching) {
+                  _searchQuery = "";
+                  _filteredProducts = _products;
+                }
+              });
+            },
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
           ),
           const SizedBox(width: 8),
         ],
@@ -153,9 +197,9 @@ class _OrderTemplatePageState extends State<OrderTemplatePage> {
                         crossAxisSpacing: 8,
                         childAspectRatio: aspectRatio,
                       ),
-                      itemCount: _products.length,
+                      itemCount: _filteredProducts.length,
                       itemBuilder: (context, index) {
-                        final p = _products[index];
+                        final p = _filteredProducts[index];
                         final qty = order.cart[p.id]?.qty ?? 0;
                         return ProductCard(
                           product: p,
@@ -170,10 +214,10 @@ class _OrderTemplatePageState extends State<OrderTemplatePage> {
 
                   return ListView.separated(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _products.length,
+                    itemCount: _filteredProducts.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
-                      final p = _products[index];
+                      final p = _filteredProducts[index];
                       final qty = order.cart[p.id]?.qty ?? 0;
                       return ProductListTile(
                         product: p,
@@ -273,10 +317,10 @@ class _OrderTemplatePageState extends State<OrderTemplatePage> {
                                       (c) => ListTile(
                                         title: Text(c.product.name),
                                         subtitle: Text(
-                                          "Qty: ${c.qty} x Rp${c.product.price.toStringAsFixed(0)}",
+                                          "Qty: ${c.qty} x ${formatCurrency(c.subtotal)}",
                                         ),
                                         trailing: Text(
-                                          "Rp${c.subtotal.toStringAsFixed(0)}",
+                                          formatCurrency(c.subtotal),
                                         ),
                                       ),
                                     ),

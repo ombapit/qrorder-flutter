@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_pos/config/constants.dart';
 import 'package:flutter_pos/models/cart_item.dart';
 import 'package:flutter_pos/models/product.dart';
 
@@ -7,20 +8,33 @@ enum DeliveryType { dineIn, takeAway }
 class OrderProvider extends ChangeNotifier {
   String _outlet = '';
   int _tableNumber = 0;
+  int _useQris = 0;
+  String _merchantKey = '';
   Map<String, CartItem> _cart = {};
   String _buyerName = '';
   String _buyerPhone = '';
+  double _trx_nominal = 0;
 
   String? get outlet => _outlet;
   int get tableNumber => _tableNumber;
+  int get useQris => _useQris;
+  String get merchantKey => _merchantKey;
   Map<String, CartItem> get cart => _cart;
   String get buyerName => _buyerName;
   String get buyerPhone => _buyerPhone;
+  double get trx_nominal => _trx_nominal;
 
-  void setOutlet(String outletName, int tableNumber) {
+  void setOutlet(
+    String outletName,
+    int tableNumber,
+    int useQris,
+    String merchantKey,
+  ) {
     // ✅ set outlet
     _outlet = outletName;
     _tableNumber = tableNumber;
+    _useQris = useQris;
+    _merchantKey = merchantKey;
     notifyListeners();
   }
 
@@ -30,6 +44,8 @@ class OrderProvider extends ChangeNotifier {
     } else {
       _cart[item.id] = CartItem(product: item);
     }
+
+    setNominal(nominal: grand_total);
     notifyListeners();
   }
 
@@ -41,6 +57,8 @@ class OrderProvider extends ChangeNotifier {
     } else {
       _cart.remove(p.id);
     }
+
+    setNominal(nominal: grand_total);
     notifyListeners();
   }
 
@@ -55,9 +73,26 @@ class OrderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setNominal({required double nominal}) {
+    _trx_nominal = nominal;
+    notifyListeners();
+  }
+
   int get totalItems => _cart.values.fold(0, (sum, item) => sum + item.qty);
   // int get totalPrice =>
   //     _cart.values.fold(0, (sum, item) => sum + item.qty * item.product.price);
   int get total_price =>
       _cart.values.fold(0, (sum, item) => sum + item.subtotal);
+
+  double get total_tax => _cart.values.fold(
+    0,
+    (sum, item) => sum + (item.subtotal / 100 * ApiConfig.tax_percentage),
+  );
+
+  double get total_service => _cart.values.fold(
+    0,
+    (sum, item) => sum + (item.subtotal / 100 * ApiConfig.service_percentage),
+  );
+
+  double get grand_total => total_price + total_tax + total_service;
 }
